@@ -10,7 +10,40 @@ on:
 permissions:
   contents: read
 
+# Las acciones se fijan por SHA de commit (inmutable); el comentario indica la versión.
+# Un tag se puede mover (git tag -f): así se atacó trivy-action en marzo de 2026.
+# Dependabot (.github/dependabot.yml) actualiza los SHA y los comentarios.
+
 jobs:
+  analisis-estatico:
+    name: Análisis estático
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Revisar el Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: Dockerfile
+
+      # Sin offline-scan, trivy resuelve el pom.xml contra Maven Central aunque solo busque
+      # secretos, y un 429 (rate limit) haría fallar el pipeline al azar.
+      - name: Buscar secretos en el repositorio (trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_OFFLINE_SCAN: true
+        with:
+          version: v0.76.2
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          exit-code: '1'
+
   build-test:
     name: Compilar y probar
     runs-on: ubuntu-latest
@@ -18,12 +51,12 @@ jobs:
 
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v7.0.1 # SHA: 3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Instalar Java 17 (Temurin)
-        uses: actions/setup-java@v6.2.0 # SHA: 77dd5b2ce225ea11469928ac317850245a74ae78
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: '17'
@@ -35,7 +68,7 @@ jobs:
 
       - name: Subir reportes de pruebas y cobertura
         if: always()
-        uses: actions/upload-artifact@v7.0.2 # SHA: cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: reportes-pruebas
           path: |
@@ -46,22 +79,35 @@ jobs:
 
   docker-build:
     name: Construir imagen Docker
-    needs: build-test
+    needs: [build-test, analisis-estatico]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v7.0.1 # SHA: 3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Preparar Docker Buildx
-        uses: docker/setup-buildx-action@v4.4.1 # SHA: f87e5991a6d7451dcb8d9637bfbc97413f497069
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Construir la imagen (sin publicar)
-        uses: docker/build-push-action@v7.4.0 # SHA: c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_RETENTION_DAYS: 7
         with:
           context: .
           push: false
+          load: true
           tags: afiliados-api:ci
+
+      # Falla solo por CRITICAL/HIGH con parche disponible: son las que se pueden corregir ya.
+      - name: Escanear vulnerabilidades de la imagen (trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          image-ref: afiliados-api:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'

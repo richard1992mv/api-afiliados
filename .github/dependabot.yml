@@ -1,0 +1,57 @@
+# Dependabot abre PRs cuando hay versiones nuevas de las dependencias.
+# target-branch: develop, porque la rama por defecto del repositorio es main.
+# cooldown: espera 7 días antes de proponer una versión recién publicada, para que
+# una versión maliciosa (como trivy v0.69.4 en marzo de 2026) se detecte y retire antes.
+version: 2
+
+updates:
+  - package-ecosystem: maven
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+    groups:
+      maven-menores:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    groups:
+      acciones:
+        patterns: ['*']
+
+  - package-ecosystem: docker
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+
+  - package-ecosystem: docker-compose
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
