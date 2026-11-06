@@ -1,0 +1,8 @@
+# Opcional: publica MySQL en el host para correr la app desde el IDE (DB_URL=jdbc:mysql://localhost:3307/...).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.db-local.yml up -d mysql
+services:
+  mysql:
+    ports:
+      # Solo accesible desde la máquina local, no desde la red.
+      # MYSQL_HOST_PORT permite cambiar el puerto del host si 3306 ya está ocupado.
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"

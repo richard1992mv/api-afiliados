@@ -1,0 +1,7 @@
+# Allowlist: se ignora todo y solo se permite lo que necesita el build.
+# Así quedan fuera target/, .git/, .env y cualquier .env.*, archivos del IDE (.idea, .vscode, ...),
+# llaves y certificados, e incluso archivos nuevos que alguien cree en el futuro.
+*
+
+!pom.xml
+!src/main/**
