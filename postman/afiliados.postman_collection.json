@@ -1,0 +1,1176 @@
+{
+	"info": {
+		"name": "API Afiliados",
+		"description": "Pruebas de todos los endpoints de la API afiliados (v1).\n\nRequisitos: la API corriendo con el perfil dev (para /dev/token):\n  SPRING_PROFILES_ACTIVE=dev en .env y `docker compose up -d --build`.\nEjecute la colección completa en orden (Run collection): cada carpeta usa datos de la anterior.\n\nLos tokens se generan en cada ejecución y se guardan solo en variables de la colección: no se exportan ni se versionan.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{tokenAdmin}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Reglas comunes a todas las respuestas.",
+					"pm.test(\"[común] Responde en menos de 2 s\", () => pm.expect(pm.response.responseTime).to.be.below(2000));",
+					"if (pm.response.code >= 400) {",
+					"\tpm.test(\"[común] Los errores son ProblemDetail (RFC 9457)\", () => {",
+					"\t\tpm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\");",
+					"\t\tconst cuerpo = pm.response.json();",
+					"\t\tpm.expect(cuerpo.status).to.eql(pm.response.code);",
+					"\t\tpm.expect(cuerpo.title).to.be.a(\"string\");",
+					"\t});",
+					"\tpm.test(\"[común] Sin trazas ni detalles internos\", () => {",
+					"\t\tconst texto = pm.response.text();",
+					"\t\tpm.expect(texto).to.not.match(/Exception|at com\\.|at org\\.|SQL|Hibernate/);",
+					"\t});",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "tokenAdmin",
+			"value": "",
+			"description": "Lo llena \"Token ADMIN\" (o péguelo a mano si no usa el perfil dev)."
+		},
+		{
+			"key": "tokenConsulta",
+			"value": "",
+			"description": "Lo llena \"Token CONSULTA\"."
+		},
+		{
+			"key": "afiliadoId",
+			"value": "",
+			"description": "Lo llena \"Registrar afiliado\"."
+		},
+		{
+			"key": "numeroDocumento",
+			"value": "",
+			"description": "Se genera al azar en cada ejecución (RN1)."
+		},
+		{
+			"key": "tokenBasura",
+			"value": ""
+		},
+		{
+			"key": "tokenAlterado",
+			"value": ""
+		},
+		{
+			"key": "tokenSinFirma",
+			"value": ""
+		}
+	],
+	"item": [
+		{
+			"name": "00 Públicos (sin token)",
+			"description": "Rutas que deben responder sin autenticación.",
+			"item": [
+				{
+					"name": "Health",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Estado UP\", () => pm.expect(pm.response.json().status).to.eql(\"UP\"));",
+									"pm.test(\"No expone detalles internos (show-details: never)\", () => pm.expect(pm.response.json()).to.not.have.property(\"components\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/actuator/health",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				},
+				{
+					"name": "OpenAPI (contrato)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"const esquema = pm.response.json().components.securitySchemes[\"bearer-jwt\"];",
+									"pm.test(\"Declara el esquema Bearer JWT (botón Authorize)\", () => {",
+									"\tpm.expect(esquema.scheme).to.eql(\"bearer\");",
+									"\tpm.expect(esquema.bearerFormat).to.eql(\"JWT\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/v3/api-docs",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				},
+				{
+					"name": "Swagger UI",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200 con HTML\", () => {",
+									"\tpm.response.to.have.status(200);",
+									"\tpm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"text/html\");",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/swagger-ui/index.html",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "01 Tokens de prueba (perfil dev)",
+			"description": "Requiere arrancar la API con SPRING_PROFILES_ACTIVE=dev. Guarda los tokens en variables de la colección (no en archivos).\nSin el perfil dev, pegue tokens emitidos por su proveedor en las variables tokenAdmin y tokenConsulta y omita esta carpeta.",
+			"item": [
+				{
+					"name": "Token ADMIN",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200 (si da 401, la API no corre con el perfil dev)\", () => pm.response.to.have.status(200));",
+									"const cuerpo = pm.response.json();",
+									"pm.test(\"Es un token Bearer de 1 hora\", () => {",
+									"\tpm.expect(cuerpo.tipo).to.eql(\"Bearer\");",
+									"\tpm.expect(cuerpo.expiraEnSegundos).to.eql(3600);",
+									"});",
+									"pm.collectionVariables.set(\"tokenAdmin\", cuerpo.token);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": "{{baseUrl}}/dev/token?roles=ADMIN&sujeto=admin.postman",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				},
+				{
+					"name": "Token CONSULTA",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"const token = pm.response.json().token;",
+									"const payload = JSON.parse(atob(token.split(\".\")[1].replace(/-/g, \"+\").replace(/_/g, \"/\")));",
+									"pm.test(\"El claim roles es [CONSULTA]\", () => pm.expect(payload.roles).to.eql([\"CONSULTA\"]));",
+									"pm.test(\"Trae emisor y vencimiento\", () => {",
+									"\tpm.expect(payload.iss).to.be.a(\"string\");",
+									"\tpm.expect(payload.exp).to.be.above(Math.floor(Date.now() / 1000));",
+									"});",
+									"pm.collectionVariables.set(\"tokenConsulta\", token);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": "{{baseUrl}}/dev/token?roles=CONSULTA&sujeto=lector.postman",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				},
+				{
+					"name": "Rol inexistente → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400: solo emite roles conocidos\", () => pm.response.to.have.status(400));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": "{{baseUrl}}/dev/token?roles=SUPERUSUARIO",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "02 Autenticación (401)",
+			"description": "Peticiones sin token o con tokens inválidos: nunca deben llegar al negocio.",
+			"item": [
+				{
+					"name": "Sin token → 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Tipo de problema no-autenticado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:no-autenticado\"));",
+									"pm.test(\"Cabecera WWW-Authenticate: Bearer (RFC 6750)\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.match(/^Bearer/));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				},
+				{
+					"name": "POST sin token → 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Tipo de problema no-autenticado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:no-autenticado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"auth": {
+							"type": "noauth"
+						},
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"CC\",\n  \"numeroDocumento\": \"{{numeroDocumento}}\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "Token con formato inválido → 401",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.collectionVariables.set(\"tokenBasura\", \"abc.def.ghi\");"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Tipo de problema no-autenticado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:no-autenticado\"));",
+									"pm.test(\"WWW-Authenticate indica invalid_token\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.include(\"invalid_token\"));",
+									"pm.test(\"El cuerpo no explica por qué falló\", () => pm.expect(pm.response.json().detail).to.eql(\"Se requiere un token Bearer válido\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenBasura}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Token CONSULTA alterado a ADMIN → 401",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const aB64 = (s) => btoa(s).replace(/\\+/g, \"-\").replace(/\\//g, \"_\").replace(/=+$/, \"\");",
+									"const deB64 = (s) => atob(s.replace(/-/g, \"+\").replace(/_/g, \"/\"));",
+									"const [cabecera, payload, firma] = pm.collectionVariables.get(\"tokenConsulta\").split(\".\");",
+									"const datos = JSON.parse(deB64(payload));",
+									"datos.roles = [\"ADMIN\"];",
+									"pm.collectionVariables.set(\"tokenAlterado\", [cabecera, aB64(JSON.stringify(datos)), firma].join(\".\"));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Tipo de problema no-autenticado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:no-autenticado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"description": "Toma el token CONSULTA, cambia el claim roles a ADMIN sin volver a firmar. La firma deja de coincidir.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenAlterado}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Token sin firma (alg none) → 401",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const aB64 = (s) => btoa(s).replace(/\\+/g, \"-\").replace(/\\//g, \"_\").replace(/=+$/, \"\");",
+									"const exp = Math.floor(Date.now() / 1000) + 300;",
+									"const payload = { iss: \"afiliados-api\", sub: \"atacante\", roles: [\"ADMIN\"], exp };",
+									"pm.collectionVariables.set(\"tokenSinFirma\", aB64('{\"alg\":\"none\"}') + \".\" + aB64(JSON.stringify(payload)) + \".\");"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Tipo de problema no-autenticado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:no-autenticado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"description": "Ataque clásico: declarar \"alg\":\"none\" para que el servidor no verifique la firma.",
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{tokenSinFirma}}",
+									"type": "string"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "Token en la URL (?access_token=) → 401",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 401\", () => pm.response.to.have.status(401));",
+									"pm.test(\"Tipo de problema no-autenticado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:no-autenticado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados?access_token={{tokenAdmin}}",
+						"description": "Los tokens en la URL quedan en logs, historial y proxies: la API solo los acepta en la cabecera.",
+						"auth": {
+							"type": "noauth"
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "03 Flujo completo ADMIN",
+			"description": "Registrar → consultar → listar → actualizar → inactivar (RN2 y RN4). Usa el token ADMIN heredado de la colección.",
+			"item": [
+				{
+					"name": "Registrar afiliado → 201",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"// Documento aleatorio de 10 dígitos: la colección se puede ejecutar muchas veces sin chocar con RN1.",
+									"pm.collectionVariables.set(\"numeroDocumento\", String(Math.floor(1e9 + Math.random() * 9e9)));"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const smmlv = Number(pm.collectionVariables.get(\"smmlv\") || pm.environment.get(\"smmlv\"));",
+									"const categoria = (salario) => salario <= 2 * smmlv ? \"A\" : salario <= 4 * smmlv ? \"B\" : \"C\";",
+									"pm.test(\"Responde 201 Created\", () => pm.response.to.have.status(201));",
+									"const afiliado = pm.response.json();",
+									"pm.test(\"Location apunta al recurso creado (ruta relativa)\", () =>",
+									"\tpm.expect(pm.response.headers.get(\"Location\")).to.eql(\"/api/v1/afiliados/\" + afiliado.id));",
+									"pm.test(\"RN4: un afiliado nuevo queda ACTIVO\", () => pm.expect(afiliado.estado).to.eql(\"ACTIVO\"));",
+									"pm.test(\"RN2: categoría calculada con el SMMLV\", () => pm.expect(afiliado.categoria).to.eql(categoria(3000000)));",
+									"pm.test(\"Devuelve los datos registrados\", () => {",
+									"\tpm.expect(afiliado.numeroDocumento).to.eql(pm.collectionVariables.get(\"numeroDocumento\"));",
+									"\tpm.expect(afiliado.nombres).to.eql(\"Ana María\");",
+									"});",
+									"pm.collectionVariables.set(\"afiliadoId\", afiliado.id);"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"CC\",\n  \"numeroDocumento\": \"{{numeroDocumento}}\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "Consultar por id → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Es el afiliado registrado\", () => pm.expect(String(pm.response.json().id)).to.eql(String(pm.collectionVariables.get(\"afiliadoId\"))));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}"
+					}
+				},
+				{
+					"name": "Listar → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200 con una lista\", () => {",
+									"\tpm.response.to.have.status(200);",
+									"\tpm.expect(pm.response.json()).to.be.an(\"array\");",
+									"});",
+									"pm.test(\"Incluye el afiliado registrado\", () => {",
+									"\tconst ids = pm.response.json().map((a) => String(a.id));",
+									"\tpm.expect(ids).to.include(String(pm.collectionVariables.get(\"afiliadoId\")));",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados"
+					}
+				},
+				{
+					"name": "Actualizar salario (categoría B) → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const smmlv = Number(pm.collectionVariables.get(\"smmlv\") || pm.environment.get(\"smmlv\"));",
+									"const categoria = (salario) => salario <= 2 * smmlv ? \"A\" : salario <= 4 * smmlv ? \"B\" : \"C\";",
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"RN2: recalcula la categoría al cambiar el salario\", () => pm.expect(pm.response.json().categoria).to.eql(categoria(5000000)));",
+									"pm.test(\"Actualiza el email\", () => pm.expect(pm.response.json().email).to.eql(\"ana.maria@correo.com\"));",
+									"pm.test(\"El documento no cambia (es la identidad)\", () => pm.expect(pm.response.json().numeroDocumento).to.eql(pm.collectionVariables.get(\"numeroDocumento\")));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.maria@correo.com\",\n  \"salario\": 5000000\n}"
+						}
+					}
+				},
+				{
+					"name": "Actualizar salario (categoría C) → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const smmlv = Number(pm.collectionVariables.get(\"smmlv\") || pm.environment.get(\"smmlv\"));",
+									"const categoria = (salario) => salario <= 2 * smmlv ? \"A\" : salario <= 4 * smmlv ? \"B\" : \"C\";",
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"RN2: categoría para salario alto\", () => pm.expect(pm.response.json().categoria).to.eql(categoria(8000000)));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.maria@correo.com\",\n  \"salario\": 8000000\n}"
+						}
+					}
+				},
+				{
+					"name": "Inactivar → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));",
+									"pm.test(\"Queda INACTIVO\", () => pm.expect(pm.response.json().estado).to.eql(\"INACTIVO\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}/inactivar"
+					}
+				},
+				{
+					"name": "RN4: actualizar un inactivo → 422",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 422\", () => pm.response.to.have.status(422));",
+									"pm.test(\"Tipo de problema afiliado-inactivo\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:afiliado-inactivo\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.maria@correo.com\",\n  \"salario\": 4000000\n}"
+						}
+					}
+				},
+				{
+					"name": "RN4: inactivar dos veces → 422",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 422\", () => pm.response.to.have.status(422));",
+									"pm.test(\"Tipo de problema afiliado-inactivo\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:afiliado-inactivo\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}/inactivar"
+					}
+				}
+			]
+		},
+		{
+			"name": "04 Reglas y validaciones (ADMIN)",
+			"description": "Errores de negocio y de entrada. Se ejecuta después del flujo: reutiliza el documento ya registrado.",
+			"item": [
+				{
+					"name": "RN1: documento duplicado → 409",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 409\", () => pm.response.to.have.status(409));",
+									"pm.test(\"Tipo de problema documento-duplicado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:documento-duplicado\"));",
+									"pm.test(\"No repite el número de documento en la respuesta (Ley 1581)\", () =>",
+									"\tpm.expect(pm.response.text()).to.not.include(pm.collectionVariables.get(\"numeroDocumento\")));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"CC\",\n  \"numeroDocumento\": \"{{numeroDocumento}}\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "RN1: mismo número con otro tipo (TI) → 201",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 201: RN1 es por tipo + número\", () => pm.response.to.have.status(201));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"TI\",\n  \"numeroDocumento\": \"{{numeroDocumento}}\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "RN3: tipo de documento no permitido → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Tipo de problema cuerpo-invalido\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:cuerpo-invalido\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"NI\",\n  \"numeroDocumento\": \"{{numeroDocumento}}\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "CC con letras → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Tipo de problema dato-invalido\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:dato-invalido\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"CC\",\n  \"numeroDocumento\": \"ABC123\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "Campos obligatorios vacíos → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Tipo de problema validacion\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:validacion\"));",
+									"pm.test(\"Lista los campos inválidos\", () => {",
+									"\tconst campos = pm.response.json().errores.map((e) => e.campo);",
+									"\tpm.expect(campos).to.include.members([\"tipoDocumento\", \"numeroDocumento\", \"nombres\", \"apellidos\", \"email\", \"salario\"]);",
+									"});"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{}"
+						}
+					}
+				},
+				{
+					"name": "Email y salario inválidos → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Tipo de problema validacion\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:validacion\"));",
+									"pm.test(\"Señala email y salario\", () => {",
+									"\tconst campos = pm.response.json().errores.map((e) => e.campo);",
+									"\tpm.expect(campos).to.include.members([\"email\", \"salario\"]);",
+									"});",
+									"pm.test(\"No repite los valores enviados\", () => pm.expect(pm.response.text()).to.not.include(\"no-es-email\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"CC\",\n  \"numeroDocumento\": \"{{numeroDocumento}}\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"no-es-email\",\n  \"salario\": -1\n}"
+						}
+					}
+				},
+				{
+					"name": "JSON mal formado → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Tipo de problema cuerpo-invalido\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:cuerpo-invalido\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{ \"tipoDocumento\": \"CC\", "
+						}
+					}
+				},
+				{
+					"name": "Afiliado inexistente → 404",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 404\", () => pm.response.to.have.status(404));",
+									"pm.test(\"Tipo de problema afiliado-no-encontrado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:afiliado-no-encontrado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/999999999"
+					}
+				},
+				{
+					"name": "Id no positivo → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));",
+									"pm.test(\"Tipo de problema validacion\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:validacion\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/0"
+					}
+				},
+				{
+					"name": "Id no numérico → 400",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 400\", () => pm.response.to.have.status(400));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/abc"
+					}
+				},
+				{
+					"name": "Método no soportado (DELETE) → 405",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 405: la API no borra afiliados (se inactivan)\", () => pm.response.to.have.status(405));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}"
+					}
+				}
+			]
+		},
+		{
+			"name": "05 Autorización rol CONSULTA",
+			"description": "Token válido de solo lectura: puede leer, no puede modificar (403).",
+			"item": [
+				{
+					"name": "CONSULTA lista → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados"
+					}
+				},
+				{
+					"name": "CONSULTA consulta por id → 200",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 200\", () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}"
+					}
+				},
+				{
+					"name": "CONSULTA registra → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));",
+									"pm.test(\"Tipo de problema acceso-denegado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:acceso-denegado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"tipoDocumento\": \"CC\",\n  \"numeroDocumento\": \"5550001112\",\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.perez@correo.com\",\n  \"salario\": 3000000\n}"
+						}
+					}
+				},
+				{
+					"name": "CONSULTA actualiza → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));",
+									"pm.test(\"Tipo de problema acceso-denegado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:acceso-denegado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"nombres\": \"Ana María\",\n  \"apellidos\": \"Pérez Ruiz\",\n  \"email\": \"ana.maria@correo.com\",\n  \"salario\": 4000000\n}"
+						}
+					}
+				},
+				{
+					"name": "CONSULTA inactiva → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403\", () => pm.response.to.have.status(403));",
+									"pm.test(\"Tipo de problema acceso-denegado\", () => pm.expect(pm.response.json().type).to.eql(\"urn:afiliados:problema:acceso-denegado\"));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}/inactivar"
+					}
+				},
+				{
+					"name": "CONSULTA DELETE → 403",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"Responde 403: la autorización se evalúa antes que el enrutamiento\", () => pm.response.to.have.status(403));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados/{{afiliadoId}}"
+					}
+				}
+			],
+			"auth": {
+				"type": "bearer",
+				"bearer": [
+					{
+						"key": "token",
+						"value": "{{tokenConsulta}}",
+						"type": "string"
+					}
+				]
+			}
+		},
+		{
+			"name": "06 Cabeceras de seguridad",
+			"description": "Cabeceras que Spring Security agrega a cada respuesta.",
+			"item": [
+				{
+					"name": "Cabeceras en una respuesta autenticada",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const h = (nombre) => pm.response.headers.get(nombre);",
+									"pm.test(\"X-Content-Type-Options: nosniff\", () => pm.expect(h(\"X-Content-Type-Options\")).to.eql(\"nosniff\"));",
+									"pm.test(\"X-Frame-Options: DENY\", () => pm.expect(h(\"X-Frame-Options\")).to.eql(\"DENY\"));",
+									"pm.test(\"Referrer-Policy: no-referrer\", () => pm.expect(h(\"Referrer-Policy\")).to.eql(\"no-referrer\"));",
+									"pm.test(\"Cache-Control impide guardar datos personales\", () => pm.expect(h(\"Cache-Control\")).to.include(\"no-store\"));",
+									"pm.test(\"Stateless: no crea cookie de sesión\", () => pm.expect(pm.response.headers.has(\"Set-Cookie\")).to.be.false);",
+									"// HSTS solo se envía por HTTPS; en http://localhost su ausencia es lo correcto.",
+									"const https = pm.request.url.protocol === \"https\";",
+									"pm.test(\"HSTS solo por HTTPS\", () => pm.expect(pm.response.headers.has(\"Strict-Transport-Security\")).to.eql(https));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "{{baseUrl}}/api/v1/afiliados"
+					}
+				}
+			]
+		}
+	]
+}
