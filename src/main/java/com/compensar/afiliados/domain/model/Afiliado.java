@@ -1,6 +1,7 @@
 package com.compensar.afiliados.domain.model;
 
 import com.compensar.afiliados.domain.exception.AfiliadoInactivoException;
+import com.compensar.afiliados.domain.exception.DatoInvalidoException;
 
 import java.math.BigDecimal;
 import java.util.Objects;
@@ -91,11 +92,11 @@ public class Afiliado {
 
 	private static String validarNombre(String valor, String campo) {
 		if (valor == null || valor.isBlank()) {
-			throw new IllegalArgumentException("El campo " + campo + " es obligatorio");
+			throw new DatoInvalidoException("El campo " + campo + " es obligatorio");
 		}
 		String limpio = valor.trim();
 		if (limpio.length() > LONGITUD_MAXIMA_NOMBRE) {
-			throw new IllegalArgumentException(
+			throw new DatoInvalidoException(
 					"El campo " + campo + " no puede superar " + LONGITUD_MAXIMA_NOMBRE + " caracteres");
 		}
 		return limpio;
@@ -103,7 +104,7 @@ public class Afiliado {
 
 	private static <T> T requerido(T valor, String mensaje) {
 		if (valor == null) {
-			throw new IllegalArgumentException(mensaje);
+			throw new DatoInvalidoException(mensaje);
 		}
 		return valor;
 	}

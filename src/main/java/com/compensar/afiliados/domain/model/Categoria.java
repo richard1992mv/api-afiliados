@@ -1,5 +1,7 @@
 package com.compensar.afiliados.domain.model;
 
+import com.compensar.afiliados.domain.exception.DatoInvalidoException;
+
 import java.math.BigDecimal;
 
 /**
@@ -24,7 +26,7 @@ public enum Categoria {
 	public static Categoria calcular(BigDecimal salario, BigDecimal smmlv) {
 		validarSmmlv(smmlv);
 		if (salario == null || salario.signum() <= 0) {
-			throw new IllegalArgumentException("El salario debe ser mayor que cero");
+			throw new DatoInvalidoException("El salario debe ser mayor que cero");
 		}
 		if (salario.compareTo(smmlv.multiply(LIMITE_A)) <= 0) {
 			return A;
@@ -40,7 +42,7 @@ public enum Categoria {
 	 */
 	public static BigDecimal validarSmmlv(BigDecimal smmlv) {
 		if (smmlv == null || smmlv.signum() <= 0) {
-			throw new IllegalArgumentException("El SMMLV debe ser mayor que cero");
+			throw new DatoInvalidoException("El SMMLV debe ser mayor que cero");
 		}
 		return smmlv;
 	}

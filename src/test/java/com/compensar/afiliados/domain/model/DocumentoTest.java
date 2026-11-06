@@ -37,6 +37,13 @@ class DocumentoTest {
 	}
 
 	@Test
+	void rn1ElMismoNumeroConDistintoTipoEsOtroDocumento() {
+		// La unicidad es por tipo + número: CC 123456 y TI 123456 pertenecen a personas distintas.
+		assertThat(new Documento(TipoDocumento.CC, "123456"))
+				.isNotEqualTo(new Documento(TipoDocumento.TI, "123456"));
+	}
+
+	@Test
 	void rechazaTipoNulo() {
 		assertThatThrownBy(() -> new Documento(null, "123456"))
 				.isInstanceOf(IllegalArgumentException.class)
