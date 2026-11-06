@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Mínimo privilegio: el GITHUB_TOKEN solo puede leer el repositorio.
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Compilar y probar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7.0.1 # SHA: 3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Instalar Java 17 (Temurin)
+        uses: actions/setup-java@v6.2.0 # SHA: 77dd5b2ce225ea11469928ac317850245a74ae78
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # verify = compilar + pruebas unitarias e integración (Testcontainers) + jacoco:check (80 %).
+      - name: Compilar, probar y verificar cobertura
+        run: ./mvnw -B verify
+
+      - name: Subir reportes de pruebas y cobertura
+        if: always()
+        uses: actions/upload-artifact@v7.0.2 # SHA: cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: reportes-pruebas
+          path: |
+            target/surefire-reports/
+            target/site/jacoco/
+          retention-days: 7
+          if-no-files-found: warn
+
+  docker-build:
+    name: Construir imagen Docker
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v7.0.1 # SHA: 3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v4.4.1 # SHA: f87e5991a6d7451dcb8d9637bfbc97413f497069
+
+      - name: Construir la imagen (sin publicar)
+        uses: docker/build-push-action@v7.4.0 # SHA: c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          push: false
+          tags: afiliados-api:ci
