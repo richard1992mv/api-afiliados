@@ -30,6 +30,13 @@ afiliados:
   # No es un secreto, por eso tiene valor por defecto; se cambia por entorno con AFILIADOS_SMMLV.
   # Verificar contra el decreto del año vigente.
   smmlv: ${AFILIADOS_SMMLV:1750905}
+  seguridad:
+    jwt:
+      # Llave HMAC (HS256) en Base64, mínimo 256 bits: `openssl rand -base64 32`.
+      # Sin valor por defecto: si falta o es corta, la aplicación no arranca (fail fast).
+      secreto: ${JWT_SECRET}
+      # Claim "iss" que deben traer los tokens.
+      emisor: ${JWT_ISSUER:afiliados-api}
 
 # --- Logs ---
 logging:

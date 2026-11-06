@@ -39,6 +39,10 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:?Define MYSQL_DATABASE en .env}
       DB_USER: ${DB_USER:?Define DB_USER en .env}
       DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env (openssl rand -base64 32)}
+      JWT_ISSUER: ${JWT_ISSUER:-afiliados-api}
+      # Vacío por defecto: el emisor de tokens /dev/token solo existe si se define SPRING_PROFILES_ACTIVE=dev.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
     ports:
       # Solo accesible desde la máquina local, no desde la red.
