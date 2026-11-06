@@ -1,0 +1,28 @@
+# Base de datos local para desarrollo.
+# Uso: copiar .env.example a .env, completar los valores y ejecutar `docker compose up -d`.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: afiliados-mysql
+    restart: unless-stopped
+    environment:
+      # ${VAR:?msg} hace que Compose falle si la variable no está definida.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Define MYSQL_DATABASE en .env}
+      MYSQL_USER: ${DB_USER:?Define DB_USER en .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+    ports:
+      # Solo accesible desde la máquina local, no desde la red.
+      # MYSQL_HOST_PORT permite cambiar el puerto del host si 3306 ya está ocupado.
+      - "127.0.0.1:${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # MYSQL_PWD evita que la contraseña aparezca en la línea de comandos del proceso.
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h localhost -u root --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql-data:
