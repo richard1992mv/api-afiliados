@@ -1,5 +1,7 @@
 package com.compensar.afiliados.domain.model;
 
+import com.compensar.afiliados.domain.exception.DatoInvalidoException;
+
 import java.util.regex.Pattern;
 
 /**
@@ -12,15 +14,15 @@ public record Documento(TipoDocumento tipo, String numero) {
 
 	public Documento {
 		if (tipo == null) {
-			throw new IllegalArgumentException("El tipo de documento es obligatorio");
+			throw new DatoInvalidoException("El tipo de documento es obligatorio");
 		}
 		if (numero == null || numero.isBlank()) {
-			throw new IllegalArgumentException("El número de documento es obligatorio");
+			throw new DatoInvalidoException("El número de documento es obligatorio");
 		}
 		numero = numero.trim().toUpperCase();
 		Pattern formato = tipo.esSoloNumerico() ? NUMERICO : ALFANUMERICO;
 		if (!formato.matcher(numero).matches()) {
-			throw new IllegalArgumentException("El número de documento no tiene un formato válido para el tipo " + tipo);
+			throw new DatoInvalidoException("El número de documento no tiene un formato válido para el tipo " + tipo);
 		}
 	}
 }

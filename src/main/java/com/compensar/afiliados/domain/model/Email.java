@@ -1,5 +1,7 @@
 package com.compensar.afiliados.domain.model;
 
+import com.compensar.afiliados.domain.exception.DatoInvalidoException;
+
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -14,12 +16,12 @@ public record Email(String valor) {
 
 	public Email {
 		if (valor == null || valor.isBlank()) {
-			throw new IllegalArgumentException("El email es obligatorio");
+			throw new DatoInvalidoException("El email es obligatorio");
 		}
 		valor = valor.trim().toLowerCase(Locale.ROOT);
 		// La longitud se valida antes de la expresión regular para acotar su costo.
 		if (valor.length() > LONGITUD_MAXIMA || !FORMATO.matcher(valor).matches()) {
-			throw new IllegalArgumentException("El email no tiene un formato válido");
+			throw new DatoInvalidoException("El email no tiene un formato válido");
 		}
 	}
 }
