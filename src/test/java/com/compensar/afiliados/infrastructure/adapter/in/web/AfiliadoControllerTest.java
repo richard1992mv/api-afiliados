@@ -16,6 +16,8 @@ import com.compensar.afiliados.domain.model.Documento;
 import com.compensar.afiliados.domain.model.Email;
 import com.compensar.afiliados.domain.model.EstadoAfiliado;
 import com.compensar.afiliados.domain.model.TipoDocumento;
+import com.compensar.afiliados.infrastructure.security.SeguridadConfig;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -23,9 +25,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -39,6 +46,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,6 +58,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AfiliadoController.class)
+@Import(SeguridadConfig.class)
 @ExtendWith(OutputCaptureExtension.class)
 class AfiliadoControllerTest {
 
@@ -62,7 +72,13 @@ class AfiliadoControllerTest {
 			{"nombres":"Ana María","apellidos":"Pérez","email":"ana.perez@correo.com","salario":8000000}""";
 
 	@Autowired
+	private WebApplicationContext contexto;
+
 	private MockMvc mockMvc;
+
+	/** La seguridad real está activa, pero el decoder no se usa: jwt() inyecta la autenticación directamente. */
+	@MockitoBean
+	private JwtDecoder jwtDecoder;
 
 	@MockitoBean
 	private RegistrarAfiliadoUseCase registrar;
@@ -74,6 +90,18 @@ class AfiliadoControllerTest {
 	private ActualizarAfiliadoUseCase actualizar;
 	@MockitoBean
 	private InactivarAfiliadoUseCase inactivar;
+
+	/**
+	 * Estas pruebas cubren el comportamiento de negocio, por eso todas las peticiones van como ADMIN.
+	 * Los casos 401/403 por rol están en SeguridadWebTest.
+	 */
+	@BeforeEach
+	void configurarMockMvc() {
+		mockMvc = MockMvcBuilders.webAppContextSetup(contexto)
+				.apply(springSecurity())
+				.defaultRequest(get(RUTA).with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+				.build();
+	}
 
 	private static Afiliado afiliado(Long id, Categoria categoria, EstadoAfiliado estado) {
 		return Afiliado.reconstituir(id, new Documento(TipoDocumento.CC, "1023456789"), "Ana", "Pérez",

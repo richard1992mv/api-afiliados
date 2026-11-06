@@ -5,6 +5,7 @@ import com.compensar.afiliados.domain.exception.AfiliadoNoEncontradoException;
 import com.compensar.afiliados.domain.exception.DatoInvalidoException;
 import com.compensar.afiliados.domain.exception.DocumentoDuplicadoException;
 import com.compensar.afiliados.infrastructure.logging.Enmascarador;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -13,6 +14,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -61,6 +64,27 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	@ExceptionHandler(AfiliadoInactivoException.class)
 	ProblemDetail afiliadoInactivo(AfiliadoInactivoException e) {
 		return problema(HttpStatus.UNPROCESSABLE_CONTENT, "afiliado-inactivo", "Afiliado inactivo", e.getMessage());
+	}
+
+	/**
+	 * 401: falta el token o es inválido (firma, emisor, vencido). El detalle es genérico a propósito:
+	 * explicar por qué falló orienta a quien intenta falsificar tokens. El token nunca se registra.
+	 */
+	@ExceptionHandler(AuthenticationException.class)
+	ProblemDetail noAutenticado(AuthenticationException e, HttpServletRequest peticion) {
+		log.warn("401 no autenticado metodo={} ruta={} motivo={}",
+				peticion.getMethod(), peticion.getRequestURI(), e.getClass().getSimpleName());
+		return problema(HttpStatus.UNAUTHORIZED, "no-autenticado", "No autenticado",
+				"Se requiere un token Bearer válido");
+	}
+
+	/** 403: el token es válido pero su rol no permite la operación. */
+	@ExceptionHandler(AccessDeniedException.class)
+	ProblemDetail accesoDenegado(AccessDeniedException e, HttpServletRequest peticion) {
+		log.warn("403 acceso denegado metodo={} ruta={} usuario={}", peticion.getMethod(),
+				peticion.getRequestURI(), peticion.getUserPrincipal() == null ? "-" : peticion.getUserPrincipal().getName());
+		return problema(HttpStatus.FORBIDDEN, "acceso-denegado", "Acceso denegado",
+				"Su rol no permite realizar esta operación");
 	}
 
 	/**
