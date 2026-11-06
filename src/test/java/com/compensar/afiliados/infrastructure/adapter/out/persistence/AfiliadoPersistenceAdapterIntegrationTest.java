@@ -9,6 +9,9 @@ import com.compensar.afiliados.domain.model.Email;
 import com.compensar.afiliados.domain.model.EstadoAfiliado;
 import com.compensar.afiliados.domain.model.TipoDocumento;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
@@ -96,6 +99,19 @@ class AfiliadoPersistenceAdapterIntegrationTest {
 		assertThatThrownBy(() -> adaptador.guardar(nuevo(TipoDocumento.CC, "1023456789")))
 				.isInstanceOf(DocumentoDuplicadoException.class)
 				.hasMessageNotContaining("1023456789");
+	}
+
+	@Test
+	@ExtendWith(OutputCaptureExtension.class)
+	void rn1ElDuplicadoNoDejaElNumeroDeDocumentoEnLosLogs(CapturedOutput salida) {
+		// Ley 1581: Hibernate registra el mensaje original de MySQL ("Duplicate entry 'CC-1023456789'"),
+		// que incluye el documento completo. Este test falla si alguna librería lo vuelve a escribir.
+		adaptador.guardar(nuevo(TipoDocumento.CC, "1023456789"));
+
+		assertThatThrownBy(() -> adaptador.guardar(nuevo(TipoDocumento.CC, "1023456789")))
+				.isInstanceOf(DocumentoDuplicadoException.class);
+
+		assertThat(salida.getAll()).doesNotContain("1023456789");
 	}
 
 	@Test

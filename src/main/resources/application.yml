@@ -31,6 +31,14 @@ afiliados:
   # Verificar contra el decreto del año vigente.
   smmlv: ${AFILIADOS_SMMLV:1750905}
 
+# --- Logs ---
+logging:
+  level:
+    # Hibernate registra en WARN el mensaje original de MySQL, que incluye valores de la fila
+    # (p. ej. "Duplicate entry 'CC-1023456789'"): datos personales sin enmascarar (Ley 1581).
+    # La excepción se sigue propagando y GlobalExceptionHandler la registra enmascarada o con incidente.
+    org.hibernate.orm.jdbc.error: ERROR
+
 # --- Actuator ---
 # Expone solo el health check; el resto de endpoints puede filtrar información interna.
 management:
