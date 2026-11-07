@@ -6,7 +6,7 @@
 # produce siempre la misma base, y un cambio de versión queda visible en un PR.
 
 # ---------- Etapa 1: compilación (JDK + Maven; no llega a la imagen final) ----------
-FROM maven:3.10.0-eclipse-temurin-17-alpine@sha256:ceddb301782ac0b8c4feab8356f15e97c46190e17fd3aa4318317ec0f14adc29 AS build
+FROM maven:3-eclipse-temurin-26-alpine@sha256:109854e6e32bfbfa8b582da4a61e2839252e5b8a25f13dbc62e88938ff29a724 AS build
 
 WORKDIR /build
 COPY pom.xml .
