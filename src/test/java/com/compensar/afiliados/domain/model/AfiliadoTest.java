@@ -134,6 +134,8 @@ class AfiliadoTest {
 				.satisfies(e -> assertThat(((AfiliadoInactivoException) e).getId()).isEqualTo(2L));
 	}
 
+	// Se prueba a propósito el contrato de equals: reflexividad (x.equals(x)) y comparación con otro tipo.
+	@SuppressWarnings({"java:S5863", "java:S5845"})
 	@Test
 	void dosAfiliadosConElMismoIdSonIguales() {
 		Afiliado uno = afiliadoActivo();
@@ -146,6 +148,8 @@ class AfiliadoTest {
 		assertThat(uno).isNotEqualTo("no es un afiliado");
 	}
 
+	// Se prueba a propósito la reflexividad de equals y hashCode en una entidad sin id.
+	@SuppressWarnings("java:S5863")
 	@Test
 	void afiliadosNuevosSinIdSoloSonIgualesASiMismos() {
 		Afiliado nuevo = Afiliado.registrar(DOCUMENTO, "Ana", "Pérez", EMAIL, new BigDecimal("1000000"), SMMLV);
