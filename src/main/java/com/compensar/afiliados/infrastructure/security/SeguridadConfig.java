@@ -38,6 +38,9 @@ public class SeguridadConfig {
 	private static final String[] RUTAS_PUBLICAS = {
 			"/actuator/health", "/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**"};
 
+	// java:S4502 (CSRF deshabilitado) revisado: falso positivo para una API stateless con Bearer token,
+	// ver la explicación en .csrf(...). Si algún día se usan cookies o sesión, hay que reactivar CSRF.
+	@SuppressWarnings("java:S4502")
 	@Bean
 	SecurityFilterChain cadenaDeSeguridad(HttpSecurity http,
 			@Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) throws Exception {

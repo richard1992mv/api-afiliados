@@ -11,7 +11,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class EmailTest {
 
 	@ParameterizedTest
-	@ValueSource(strings = {"ana@correo.com", "ana.perez+caja@empresa.com.co", "a_b-c@sub.dominio.org"})
+	@ValueSource(strings = {"ana@correo.com", "ana.perez+caja@empresa.com.co", "a_b-c@sub.dominio.org", "a@b.co",
+			"ana@mi-empresa.gov.co"})
 	void aceptaEmailsValidos(String valor) {
 		assertThat(new Email(valor).valor()).isEqualTo(valor);
 	}
@@ -31,7 +32,8 @@ class EmailTest {
 	}
 
 	@ParameterizedTest
-	@ValueSource(strings = {"sin-arroba.com", "ana@", "@correo.com", "ana@correo", "ana@correo.c", "ana perez@correo.com"})
+	@ValueSource(strings = {"sin-arroba.com", "ana@", "@correo.com", "ana@correo", "ana@correo.c", "ana perez@correo.com",
+			"ana@correo..com", "ana@.correo.com", "ana@correo.com.", "ana@correo.c0m", "ana@@correo.com"})
 	void rechazaFormatosInvalidos(String valor) {
 		assertThatThrownBy(() -> new Email(valor))
 				.isInstanceOf(IllegalArgumentException.class)

@@ -30,6 +30,8 @@ public class TokenDesarrolloConfig {
 	}
 
 	/** Cadena propia para /dev/** con prioridad sobre la general: el emisor de tokens no pide token. */
+	// java:S4502 revisado: igual que en SeguridadConfig, stateless y sin cookies (y solo existe en el perfil dev).
+	@SuppressWarnings("java:S4502")
 	@Bean
 	@Order(1)
 	SecurityFilterChain cadenaDeDesarrollo(HttpSecurity http) throws Exception {
