@@ -34,6 +34,8 @@ updates:
       acciones:
         patterns: ['*']
 
+  # Imágenes base: solo parches y versiones menores. El proyecto usa versiones LTS a propósito
+  # (Java 17, MySQL 8.4); cambiar de versión mayor es una decisión deliberada, no automática.
   - package-ecosystem: docker
     directory: /
     target-branch: develop
@@ -44,6 +46,11 @@ updates:
       default-days: 7
     commit-message:
       prefix: build
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: eclipse-temurin
+        versions: ['>= 18']
 
   - package-ecosystem: docker-compose
     directory: /
@@ -55,3 +62,8 @@ updates:
       default-days: 7
     commit-message:
       prefix: build
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: mysql
+        versions: ['>= 9']
