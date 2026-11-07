@@ -40,6 +40,7 @@
 		<swagger-ui.version>5.34.1</swagger-ui.version>
 		<sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
 		<dependency-check.version>13.0.0</dependency-check.version>
+		<cyclonedx.version>2.9.3</cyclonedx.version>
 
 		<!-- SonarCloud. El token NO va aquí: el scanner lo lee de la variable de entorno SONAR_TOKEN. -->
 		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
@@ -266,6 +267,28 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+			<!-- SBOM (Software Bill of Materials) en formato CycloneDX: target/bom.json en cada package.
+			     Inventario de todas las dependencias (directas y transitivas) con versión, licencia y hash. -->
+			<plugin>
+				<groupId>org.cyclonedx</groupId>
+				<artifactId>cyclonedx-maven-plugin</artifactId>
+				<version>${cyclonedx.version}</version>
+				<executions>
+					<execution>
+						<id>generar-sbom</id>
+						<phase>package</phase>
+						<goals>
+							<goal>makeBom</goal>
+						</goals>
+					</execution>
+				</executions>
+				<configuration>
+					<outputFormat>json</outputFormat>
+					<outputName>bom</outputName>
+					<!-- Solo lo que viaja en el JAR: las dependencias de test no llegan a producción. -->
+					<includeTestScope>false</includeTestScope>
+				</configuration>
 			</plugin>
 			<!-- Análisis en SonarCloud: ./mvnw verify sonar:sonar (solo en el pipeline). -->
 			<plugin>

@@ -66,6 +66,9 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     enabled: ${SWAGGER_ENABLED:true}
+    # springdoc arma la ruta de los archivos con su versión interna de swagger-ui (5.34.0); como el pom
+    # fija otra (CVE de DOMPurify), sin esto /swagger-ui/index.html da 404. Maven lo reemplaza al compilar.
+    version: '@swagger-ui.version@'
     path: /swagger-ui.html
 
 # --- Errores ---

@@ -16,6 +16,7 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthen
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.header.writers.CrossOriginResourcePolicyHeaderWriter.CrossOriginResourcePolicy;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
@@ -76,6 +77,12 @@ public class SeguridadConfig {
 						.contentTypeOptions(Customizer.withDefaults())
 						// DENY: la respuesta no puede mostrarse dentro de un iframe (clickjacking).
 						.frameOptions(marcos -> marcos.deny())
+						// Equivalente moderno de X-Frame-Options (OWASP REST Security Cheat Sheet). Solo
+						// frame-ancestors: una CSP completa (default-src 'none') rompería Swagger UI.
+						.contentSecurityPolicy(csp -> csp.policyDirectives("frame-ancestors 'none'"))
+						// CORP (hallazgo de ZAP 90004): otro sitio no puede cargar estas respuestas como
+						// recurso (<img>, <script>), vía de ataques tipo Spectre. No afecta a fetch con CORS.
+						.crossOriginResourcePolicy(corp -> corp.policy(CrossOriginResourcePolicy.SAME_ORIGIN))
 						.referrerPolicy(referer -> referer.policy(ReferrerPolicy.NO_REFERRER)));
 		return http.build();
 	}
