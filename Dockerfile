@@ -19,7 +19,7 @@ RUN --mount=type=cache,target=/root/.m2 \
     && cp target/afiliados-*.jar /build/app.jar
 
 # ---------- Etapa 2: ejecución (solo JRE + el JAR) ----------
-FROM eclipse-temurin:17.0.21_9-jre-alpine@sha256:e2ba4e947bd5e236a9866fbdda03e4936036cb9e9d16ea0d84d103d6634a5c21
+FROM eclipse-temurin:24.0.2_12-jre-alpine@sha256:4044b6c87cb088885bcd0220f7dc7a8a4aab76577605fa471945d2e98270741f
 
 # Usuario de sistema sin privilegios, sin home ni shell de login. UID fijo para poder auditarlo.
 RUN addgroup -S -g 10001 afiliados \
