@@ -33,6 +33,22 @@
 		<jacoco.version>0.8.16</jacoco.version>
 		<!-- Cobertura mínima de líneas exigida por jacoco:check (CLAUDE.md: 80 %). -->
 		<jacoco.cobertura.minima>0.80</jacoco.cobertura.minima>
+		<sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
+		<dependency-check.version>13.0.0</dependency-check.version>
+
+		<!-- SonarCloud. El token NO va aquí: el scanner lo lee de la variable de entorno SONAR_TOKEN. -->
+		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+		<sonar.organization>richard1992mv</sonar.organization>
+		<sonar.projectKey>richard1992mv_api-afiliados</sonar.projectKey>
+		<sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<!-- Las mismas exclusiones que JaCoCo: sin esto Sonar contaría esas clases como 0 % cubiertas. -->
+		<sonar.coverage.exclusions>
+			**/AfiliadosApplication.java,
+			**/infrastructure/config/**,
+			**/adapter/in/web/*Request.java,
+			**/adapter/in/web/*Response.java,
+			**/adapter/out/persistence/*Entity.java
+		</sonar.coverage.exclusions>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -235,6 +251,36 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+			<!-- Análisis en SonarCloud: ./mvnw verify sonar:sonar (solo en el pipeline). -->
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>${sonar-maven-plugin.version}</version>
+			</plugin>
+			<!-- SCA: ./mvnw dependency-check:check. Sin ejecución en verify para no exigir la llave del NVD en local. -->
+			<plugin>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>${dependency-check.version}</version>
+				<configuration>
+					<!-- CVSS >= 7 = severidad alta o crítica. -->
+					<failBuildOnCVSS>7</failBuildOnCVSS>
+					<!-- Lee la llave de la variable de entorno: nunca aparece en la línea de comandos ni en el pom. -->
+					<nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+					<formats>
+						<format>HTML</format>
+						<format>JSON</format>
+					</formats>
+					<!-- Las dependencias de test no llegan a la imagen. -->
+					<skipTestScope>true</skipTestScope>
+					<suppressionFiles>
+						<suppressionFile>${project.basedir}/dependency-check-suppressions.xml</suppressionFile>
+					</suppressionFiles>
+					<!-- OSS Index exige credenciales propias; el analizador .NET no aplica a este proyecto. -->
+					<ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
+					<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>
