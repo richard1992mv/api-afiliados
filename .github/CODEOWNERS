@@ -1,0 +1,30 @@
+# Dueños del código. GitHub les pide revisión automáticamente en cada PR que toque estas rutas.
+# La última regla que coincide gana; por eso las rutas específicas van después de la general.
+#
+# Para que la revisión sea OBLIGATORIA hay que activar "Require review from Code Owners" en el
+# ruleset. Con un único mantenedor no se activa: GitHub no permite aprobar el PR propio.
+# Con un equipo o un proveedor externo, las rutas sensibles deben tener un dueño distinto del autor.
+
+*                                                               @richard1992mv
+
+# Pipeline, Dependabot y gobierno: definen qué controles se aplican a todos los cambios.
+/.github/                                                       @richard1992mv
+
+# Seguridad de la aplicación: autenticación, roles, cabeceras.
+/src/main/java/com/compensar/afiliados/infrastructure/security/ @richard1992mv
+
+# Cadena de suministro y configuración de los escáneres.
+/pom.xml                                                        @richard1992mv
+/Dockerfile                                                     @richard1992mv
+/docker-compose*.yml                                            @richard1992mv
+/.gitleaks.toml                                                 @richard1992mv
+/.gitleaksignore                                                @richard1992mv
+/dependency-check-suppressions.xml                              @richard1992mv
+/.zap/                                                          @richard1992mv
+/package.json                                                   @richard1992mv
+/package-lock.json                                              @richard1992mv
+/commitlint.config.mjs                                          @richard1992mv
+
+# Decisiones de arquitectura y estándares.
+/docs/                                                          @richard1992mv
+/SECURITY.md                                                    @richard1992mv
