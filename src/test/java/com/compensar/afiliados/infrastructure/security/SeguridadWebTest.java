@@ -205,6 +205,8 @@ class SeguridadWebTest {
 				.andExpect(header().string("X-Content-Type-Options", "nosniff"))
 				.andExpect(header().string("X-Frame-Options", "DENY"))
 				.andExpect(header().string("Referrer-Policy", "no-referrer"))
+				.andExpect(header().string("Content-Security-Policy", "frame-ancestors 'none'"))
+				.andExpect(header().string("Cross-Origin-Resource-Policy", "same-origin"))
 				.andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
 	}
 

@@ -32,11 +32,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Revisar el Dockerfile (hadolint)
-        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
-        with:
-          dockerfile: Dockerfile
-
       # Sin offline-scan, trivy resuelve el pom.xml contra Maven Central aunque solo busque
       # secretos, y un 429 (rate limit) haría fallar el pipeline al azar.
       - name: Buscar secretos en el repositorio (trivy)
@@ -82,6 +77,16 @@ jobs:
             target/site/jacoco/
           retention-days: 7
           if-no-files-found: warn
+
+      # El SBOM (cyclonedx-maven-plugin en la fase package) se conserva más tiempo: sirve para
+      # responder "¿qué versión de X llevaba lo que construimos?" cuando aparezca un CVE nuevo.
+      - name: Subir el SBOM (CycloneDX)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-cyclonedx
+          path: target/bom.json
+          retention-days: 90
+          if-no-files-found: error
 
   secret-scan:
     name: Secretos (gitleaks)
@@ -227,17 +232,25 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  docker-build:
-    name: Construir imagen Docker
-    needs: [build-test, analisis-estatico, secret-scan, sast-semgrep]
+  container-security:
+    name: Seguridad del contenedor
+    needs: build-test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # subir el SARIF de trivy a la pestaña Security
 
     steps:
       - name: Descargar el código
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Revisar el Dockerfile (hadolint)
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
+        with:
+          dockerfile: Dockerfile
 
       - name: Preparar Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -250,9 +263,30 @@ jobs:
           context: .
           push: false
           load: true
-          tags: afiliados-api:ci
+          tags: |
+            afiliados-api:ci
+            afiliados-api:local
 
-      # Falla solo por CRITICAL/HIGH con parche disponible: son las que se pueden corregir ya.
+      # Solo CRITICAL/HIGH con parche disponible: son las que se pueden corregir ya.
+      # Primero el SARIF (sin fallar), para que los hallazgos lleguen a Security aunque el gate falle.
+      - name: Generar el reporte SARIF de la imagen (trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          image-ref: afiliados-api:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: sarif
+          output: trivy-imagen.sarif
+          limit-severities-for-sarif: true
+          exit-code: '0'
+
+      - name: Publicar hallazgos de la imagen en la pestaña Security
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy-imagen.sarif
+          category: trivy-imagen
+
       - name: Escanear vulnerabilidades de la imagen (trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -261,3 +295,118 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
+          skip-setup-trivy: true
+
+      # "Construir una vez, probar lo mismo": el DAST ataca exactamente la imagen escaneada.
+      - name: Exportar la imagen para el DAST
+        run: docker save afiliados-api:local -o "$RUNNER_TEMP/afiliados-api.tar"
+
+      - name: Compartir la imagen con el job DAST
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: imagen-afiliados-api
+          path: ${{ runner.temp }}/afiliados-api.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  dast:
+    name: DAST (OWASP ZAP)
+    needs: container-security
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Valores de prueba: el entorno vive solo durante este job y se destruye al terminar.
+      MYSQL_DATABASE: afiliados
+      DB_USER: afiliados
+      SWAGGER_ENABLED: 'true' # ZAP necesita el OpenAPI para conocer los endpoints
+      SPRING_PROFILES_ACTIVE: '' # misma configuración que producción: sin /dev/token
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Descargar la imagen escaneada
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: imagen-afiliados-api
+          path: ${{ runner.temp }}
+
+      - name: Cargar la imagen
+        run: docker load -i "$RUNNER_TEMP/afiliados-api.tar"
+
+      # Secretos aleatorios por ejecución: no existen en el repositorio ni se reutilizan.
+      # add-mask hace que GitHub los reemplace por *** si aparecen en algún log.
+      - name: Generar credenciales de prueba
+        run: |
+          for variable in MYSQL_ROOT_PASSWORD DB_PASSWORD JWT_SECRET; do
+            valor=$(openssl rand -base64 32)
+            echo "::add-mask::$valor"
+            echo "$variable=$valor" >> "$GITHUB_ENV"
+          done
+
+      - name: Levantar la API y MySQL (docker compose)
+        run: docker compose up -d --no-build --wait --wait-timeout 180
+
+      - name: Esperar a que /actuator/health responda UP
+        run: |
+          for intento in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then
+              echo "API lista (intento $intento)"; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::La API no respondió UP"; exit 1
+
+      # Se firma con el JWT_SECRET de esta ejecución, igual que lo haría el emisor real.
+      # ZAP lo recibe por ZAP_AUTH_HEADER_VALUE (variable de entorno, no línea de comandos).
+      - name: Firmar un token ADMIN de prueba
+        run: |
+          token=$(python3 - <<'PY'
+          import base64, hashlib, hmac, json, os, time
+
+          def b64url(datos):
+              return base64.urlsafe_b64encode(datos).rstrip(b"=").decode()
+
+          ahora = int(time.time())
+          cabecera = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+          carga = b64url(json.dumps({"iss": os.environ.get("JWT_ISSUER", "afiliados-api"), "sub": "zap-dast",
+                                     "iat": ahora, "exp": ahora + 1800, "roles": ["ADMIN"]}).encode())
+          firma = hmac.new(base64.b64decode(os.environ["JWT_SECRET"]), f"{cabecera}.{carga}".encode(),
+                           hashlib.sha256).digest()
+          print(f"{cabecera}.{carga}.{b64url(firma)}")
+          PY
+          )
+          echo "::add-mask::$token"
+          echo "ZAP_AUTH_HEADER_VALUE=Bearer $token" >> "$GITHUB_ENV"
+
+      # Sin esta comprobación, un token inválido haría que ZAP solo viera respuestas 401
+      # y el escaneo "pasaría" sin haber probado nada de la API.
+      - name: Comprobar que el token es aceptado
+        run: |
+          codigo=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: $ZAP_AUTH_HEADER_VALUE" \
+            http://127.0.0.1:8080/api/v1/afiliados)
+          echo "GET /api/v1/afiliados con el token: HTTP $codigo"
+          test "$codigo" = 200
+
+      # -I: los avisos (WARN) no fallan; solo las reglas marcadas FAIL en .zap/rules.tsv.
+      - name: Escanear la API (OWASP ZAP)
+        uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
+        with:
+          docker_name: ghcr.io/zaproxy/zaproxy:2.17.0@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af
+          target: http://localhost:8080/v3/api-docs
+          format: openapi
+          rules_file_name: .zap/rules.tsv
+          cmd_options: -I
+          fail_action: true
+          allow_issue_writing: false # crear issues exigiría issues: write
+          artifact_name: reporte-zap
+
+      - name: Mostrar los logs de la API si algo falló
+        if: failure()
+        run: docker compose logs app --tail 150
+
+      - name: Apagar el entorno de prueba
+        if: always()
+        run: docker compose down -v
