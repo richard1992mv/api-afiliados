@@ -145,6 +145,10 @@ jobs:
   sonar:
     name: Calidad (SonarCloud)
     needs: build-test
+    # El plan gratuito de SonarCloud solo analiza PRs y la rama principal (main): en un push a
+    # develop falla con "not allowed to access data from non main branches". No se pierde control:
+    # todo lo que llega a develop entra por un PR que ya pasó el quality gate.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
