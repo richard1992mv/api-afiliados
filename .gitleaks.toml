@@ -1,0 +1,8 @@
+# Configuración de gitleaks (https://github.com/gitleaks/gitleaks).
+# Usa todas las reglas por defecto (tokens de GitHub, AWS, llaves privadas, genéricas...).
+# Los falsos positivos revisados NO se silencian aquí con reglas amplias, sino uno a uno
+# por su huella en .gitleaksignore: así un secreto nuevo en el mismo archivo sí se detecta.
+title = "gitleaks api-afiliados"
+
+[extend]
+useDefault = true

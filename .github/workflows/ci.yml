@@ -5,8 +5,14 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  # Cada lunes (sobre main): gitleaks revisa TODO el historial y dependency-check
+  # detecta CVE nuevos publicados en dependencias que no cambiaron.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
 
 # Mínimo privilegio: el GITHUB_TOKEN solo puede leer el repositorio.
+# Los jobs que necesitan algo más lo declaran (y deben repetir contents: read).
 permissions:
   contents: read
 
@@ -77,9 +83,149 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  secret-scan:
+    name: Secretos (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read # la acción lista los commits del PR por la API
+
+    steps:
+      # fetch-depth: 0 trae todo el historial (por defecto solo el último commit).
+      - name: Descargar el código con todo el historial
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # En un PR revisa sus commits; en push, los commits enviados; en schedule, todo el historial.
+      # Usa .gitleaks.toml y .gitleaksignore (falsos positivos revisados) de la raíz.
+      - name: Buscar secretos (gitleaks)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_ENABLE_COMMENTS: false # comentar el PR exigiría pull-requests: write
+
+  sast-semgrep:
+    name: SAST (Semgrep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # subir el SARIF a la pestaña Security
+    container:
+      image: semgrep/semgrep:1.184.0@sha256:cc1b68266f267878b39739373ea9985b9a78e5d64497dd875c8de100b22695ed
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # --error: termina con código 1 si hay hallazgos. --metrics=off: no envía telemetría.
+      - name: Analizar el código (Semgrep)
+        run: >-
+          semgrep scan
+          --config p/java
+          --config p/owasp-top-ten
+          --metrics=off
+          --error
+          --sarif-output=semgrep.sarif
+
+      # always(): los hallazgos deben verse en Security justo cuando el paso anterior falla.
+      - name: Publicar hallazgos en la pestaña Security
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  sonar:
+    name: Calidad (SonarCloud)
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Sonar usa el historial (git blame) para saber qué código es nuevo.
+      - name: Descargar el código con todo el historial
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Instalar Java 17 (Temurin)
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Cachear los analizadores de Sonar
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.sonar/cache
+          key: sonar-${{ runner.os }}
+
+      # verify genera jacoco.xml; sonar:sonar lo envía. qualitygate.wait hace fallar el job
+      # si el quality gate de SonarCloud falla (si no, solo informaría).
+      - name: Analizar en SonarCloud
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./mvnw -B verify sonar:sonar -Dsonar.qualitygate.wait=true
+
+  sca:
+    name: SCA (OWASP Dependency-Check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar Java 17 (Temurin)
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # La base del NVD pesa cientos de MB: se cachea por semana y cada ejecución
+      # solo descarga los cambios. Va fuera de ~/.m2 para no mezclarse con el caché de Maven.
+      - name: Calcular la semana para el caché
+        id: semana
+        run: echo "valor=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Restaurar la base de datos del NVD
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/dependency-check
+          key: nvd-${{ runner.os }}-${{ steps.semana.outputs.valor }}
+          restore-keys: nvd-${{ runner.os }}-
+
+      # failBuildOnCVSS=7 (pom.xml): falla con vulnerabilidades altas o críticas.
+      # El plugin lee NVD_API_KEY del entorno (nvdApiKeyEnvironmentVariable).
+      - name: Analizar dependencias (dependency-check)
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: ./mvnw -B dependency-check:check -DdataDirectory="$HOME/.cache/dependency-check"
+
+      - name: Subir el reporte de dependencias
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reporte-dependency-check
+          path: target/dependency-check-report.*
+          retention-days: 7
+          if-no-files-found: warn
+
   docker-build:
     name: Construir imagen Docker
-    needs: [build-test, analisis-estatico]
+    needs: [build-test, analisis-estatico, secret-scan, sast-semgrep]
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
