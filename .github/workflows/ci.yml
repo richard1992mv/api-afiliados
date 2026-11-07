@@ -45,6 +45,39 @@ jobs:
           scanners: secret
           exit-code: '1'
 
+  commitlint:
+    name: Commits (commitlint)
+    # Valida los commits que trae el PR; en un push ya se validaron en su PR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # fetch-depth: 0 para tener los commits entre la base y la cabeza del PR.
+      - name: Descargar el código con el historial
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      # npm ci instala exactamente el package-lock.json y verifica el hash sha512 de cada paquete.
+      # --ignore-scripts: no ejecuta scripts de instalación (vía de ataque frecuente en npm).
+      - name: Instalar commitlint
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      # Los SHA se pasan por variables de entorno, no interpolados en el script.
+      - name: Validar los mensajes de los commits del PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: npx --no-install commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
   build-test:
     name: Compilar y probar
     runs-on: ubuntu-latest

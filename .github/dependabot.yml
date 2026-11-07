@@ -34,6 +34,21 @@ updates:
       acciones:
         patterns: ['*']
 
+  # Herramientas de Node (commitlint): no forman parte de la API.
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+    groups:
+      commitlint:
+        patterns: ['@commitlint/*']
+
   # Imágenes base: solo parches y versiones menores. El proyecto usa versiones LTS a propósito
   # (Java 17, MySQL 8.4); cambiar de versión mayor es una decisión deliberada, no automática.
   - package-ecosystem: docker

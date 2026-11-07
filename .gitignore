@@ -73,3 +73,6 @@ desktop.ini
 *.key
 *.p12
 *.jks
+
+# Herramientas de Node (commitlint)
+node_modules/
