@@ -75,6 +75,14 @@ class AfiliadosApplicationTests {
 	}
 
 	@Test
+	void swaggerUiCargaSusArchivos() throws Exception {
+		// Regresión detectada por DAST: al fijar swagger-ui en el pom, springdoc seguía buscando los
+		// archivos de su versión interna y /swagger-ui/index.html devolvía 404 (el redirect sí funcionaba).
+		mockMvc.perform(get("/swagger-ui/index.html")).andExpect(status().isOk());
+		mockMvc.perform(get("/swagger-ui/swagger-ui-bundle.js")).andExpect(status().isOk());
+	}
+
+	@Test
 	void losMetadatosDelRecursoProtegidoSoloPublicanComoEnviarElToken() throws Exception {
 		// RFC 9728: público por diseño. Fija qué expone, para que un cambio quede visible en un PR.
 		mockMvc.perform(get("/.well-known/oauth-protected-resource"))
