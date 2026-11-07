@@ -1,0 +1,61 @@
+# API afiliados + MySQL para desarrollo local.
+# Uso: copiar .env.example a .env, completar los valores y ejecutar `docker compose up -d --build`.
+# La API queda en http://localhost:8080 (Swagger en /swagger-ui.html).
+# MySQL no publica puertos: solo la app lo alcanza por la red interna de Compose.
+# Para correr la app desde el IDE, publica MySQL con:
+#   docker compose -f docker-compose.yml -f docker-compose.db-local.yml up -d mysql
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: afiliados-mysql
+    restart: unless-stopped
+    environment:
+      # ${VAR:?msg} hace que Compose falle si la variable no está definida.
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Define MYSQL_DATABASE en .env}
+      MYSQL_USER: ${DB_USER:?Define DB_USER en .env}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # MYSQL_PWD evita que la contraseña aparezca en la línea de comandos del proceso.
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h localhost -u root --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    image: afiliados-api:local
+    container_name: afiliados-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        # Espera a que el healthcheck de MySQL pase, no solo a que el contenedor exista.
+        condition: service_healthy
+    environment:
+      # Dentro de la red de Compose, MySQL se llama "mysql" y escucha en 3306
+      # (el DB_URL de .env apunta a localhost y sirve solo para correr la app desde el IDE).
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:?Define MYSQL_DATABASE en .env}
+      DB_USER: ${DB_USER:?Define DB_USER en .env}
+      DB_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env (openssl rand -base64 32)}
+      JWT_ISSUER: ${JWT_ISSUER:-afiliados-api}
+      # Vacío por defecto: el emisor de tokens /dev/token solo existe si se define SPRING_PROFILES_ACTIVE=dev.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+    ports:
+      # Solo accesible desde la máquina local, no desde la red.
+      - "127.0.0.1:${APP_HOST_PORT:-8080}:8080"
+    # Endurecimiento: sistema de archivos de solo lectura (Tomcat escribe solo en /tmp),
+    # sin capacidades de Linux y sin escalar privilegios (setuid).
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mysql-data:

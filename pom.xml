@@ -28,7 +28,43 @@
 	</scm>
 	<properties>
 		<java.version>17</java.version>
+		<springdoc.version>3.2.0</springdoc.version>
+		<archunit.version>1.5.1</archunit.version>
+		<jacoco.version>0.8.16</jacoco.version>
+		<!-- Cobertura mínima de líneas exigida por jacoco:check (CLAUDE.md: 80 %). -->
+		<jacoco.cobertura.minima>0.80</jacoco.cobertura.minima>
+		<!-- SCA (dependency-check): 9.7.0, la versión de Spring Boot, tiene CVE-2026-60586 (7.7) y CVE-2026-60623 (7.1). -->
+		<mysql.version>26.10.0</mysql.version>
+		<!-- springdoc 3.2.0 trae swagger-ui 5.34.0 con DOMPurify 3.4.16 (CVE-2026-116803/116804);
+		     5.34.1 incluye DOMPurify 3.4.17. Quitar cuando springdoc lo traiga por defecto. -->
+		<swagger-ui.version>5.34.1</swagger-ui.version>
+		<sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
+		<dependency-check.version>13.0.0</dependency-check.version>
+
+		<!-- SonarCloud. El token NO va aquí: el scanner lo lee de la variable de entorno SONAR_TOKEN. -->
+		<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+		<sonar.organization>richard1992mv</sonar.organization>
+		<sonar.projectKey>richard1992mv_api-afiliados</sonar.projectKey>
+		<sonar.coverage.jacoco.xmlReportPaths>${project.build.directory}/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<!-- Las mismas exclusiones que JaCoCo: sin esto Sonar contaría esas clases como 0 % cubiertas. -->
+		<sonar.coverage.exclusions>
+			**/AfiliadosApplication.java,
+			**/infrastructure/config/**,
+			**/adapter/in/web/*Request.java,
+			**/adapter/in/web/*Response.java,
+			**/adapter/out/persistence/*Entity.java
+		</sonar.coverage.exclusions>
 	</properties>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.webjars</groupId>
+				<artifactId>swagger-ui</artifactId>
+				<version>${swagger-ui.version}</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -49,6 +85,16 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
+		</dependency>
+		<!-- Spring Security como OAuth2 Resource Server: valida JWT en cada petición. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>org.flywaydb</groupId>
@@ -90,6 +136,35 @@
 			<artifactId>spring-boot-starter-webmvc-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Incluye spring-security-test: jwt() para simular tokens en MockMvc. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-security-oauth2-resource-server-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- Pruebas de integración con MySQL real en contenedor (versión gestionada por Spring Boot). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-mysql</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- Reglas de arquitectura ejecutables. -->
+		<dependency>
+			<groupId>com.tngtech.archunit</groupId>
+			<artifactId>archunit-junit5</artifactId>
+			<version>${archunit.version}</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -97,6 +172,64 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>${jacoco.version}</version>
+				<configuration>
+					<!-- Se excluye código sin lógica que probar: arranque, configuración de Spring,
+					     DTOs (records sin comportamiento) y entidades JPA (solo mapeo). -->
+					<excludes>
+						<exclude>com/compensar/afiliados/AfiliadosApplication.class</exclude>
+						<exclude>com/compensar/afiliados/infrastructure/config/**</exclude>
+						<exclude>com/compensar/afiliados/infrastructure/adapter/in/web/*Request.class</exclude>
+						<exclude>com/compensar/afiliados/infrastructure/adapter/in/web/*Response.class</exclude>
+						<exclude>com/compensar/afiliados/infrastructure/adapter/out/persistence/*Entity.class</exclude>
+					</excludes>
+				</configuration>
+				<executions>
+					<execution>
+						<id>preparar-agente</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>reporte</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+						<configuration>
+							<formats>
+								<format>XML</format>
+								<format>HTML</format>
+							</formats>
+						</configuration>
+					</execution>
+					<execution>
+						<id>verificar-cobertura</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${jacoco.cobertura.minima}</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -133,6 +266,36 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+			<!-- Análisis en SonarCloud: ./mvnw verify sonar:sonar (solo en el pipeline). -->
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>${sonar-maven-plugin.version}</version>
+			</plugin>
+			<!-- SCA: ./mvnw dependency-check:check. Sin ejecución en verify para no exigir la llave del NVD en local. -->
+			<plugin>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>${dependency-check.version}</version>
+				<configuration>
+					<!-- CVSS >= 7 = severidad alta o crítica. -->
+					<failBuildOnCVSS>7</failBuildOnCVSS>
+					<!-- Lee la llave de la variable de entorno: nunca aparece en la línea de comandos ni en el pom. -->
+					<nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+					<formats>
+						<format>HTML</format>
+						<format>JSON</format>
+					</formats>
+					<!-- Las dependencias de test no llegan a la imagen. -->
+					<skipTestScope>true</skipTestScope>
+					<suppressionFiles>
+						<suppressionFile>${project.basedir}/dependency-check-suppressions.xml</suppressionFile>
+					</suppressionFiles>
+					<!-- OSS Index exige credenciales propias; el analizador .NET no aplica a este proyecto. -->
+					<ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
+					<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

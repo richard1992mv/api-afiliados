@@ -1,0 +1,10 @@
+# Falsos positivos revisados (2026-11-06). Formato: commit:archivo:regla:línea.
+# Cada huella silencia SOLO ese hallazgo en ese commit; cualquier secreto nuevo se detecta.
+
+# TokensDePrueba.SECRETO y OTRO_SECRETO: llaves HMAC públicas a propósito, solo existen en
+# src/test y ningún entorno real las usa (producción exige JWT_SECRET por variable de entorno).
+dad215f4ef314f14eb3a6ee4a100a2c5c4c9a4cf:src/test/java/com/compensar/afiliados/infrastructure/security/TokensDePrueba.java:generic-api-key:22
+dad215f4ef314f14eb3a6ee4a100a2c5c4c9a4cf:src/test/java/com/compensar/afiliados/infrastructure/security/TokensDePrueba.java:generic-api-key:24
+
+# La regla genérica tomó como secreto un fragmento de concatenación ("... + TokensDePrueba.SECRETO, ").
+dad215f4ef314f14eb3a6ee4a100a2c5c4c9a4cf:src/test/java/com/compensar/afiliados/infrastructure/security/dev/TokenDesarrolloControllerTest.java:generic-api-key:30

@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: afiliados
+
+  # --- Base de datos (MySQL 8) ---
+  # Valores desde variables de entorno, sin valores por defecto: si falta alguna,
+  # la aplicación no arranca (fail fast) en lugar de usar una credencial escondida.
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+
+  # --- JPA / Hibernate ---
+  jpa:
+    # Evita mantener la sesión de BD abierta durante la vista (antipatrón y fuga de recursos).
+    open-in-view: false
+    # No imprimir SQL: los parámetros podrían contener datos personales (Ley 1581).
+    show-sql: false
+    hibernate:
+      # El esquema lo gestiona Flyway; Hibernate solo valida que las entidades coincidan.
+      ddl-auto: validate
+
+  # --- Flyway ---
+  flyway:
+    locations: classpath:db/migration
+
+# --- Reglas de negocio ---
+afiliados:
+  # RN2: salario mínimo mensual legal vigente (SMMLV), en pesos colombianos.
+  # No es un secreto, por eso tiene valor por defecto; se cambia por entorno con AFILIADOS_SMMLV.
+  # Verificar contra el decreto del año vigente.
+  smmlv: ${AFILIADOS_SMMLV:1750905}
+  seguridad:
+    jwt:
+      # Llave HMAC (HS256) en Base64, mínimo 256 bits: `openssl rand -base64 32`.
+      # Sin valor por defecto: si falta o es corta, la aplicación no arranca (fail fast).
+      secreto: ${JWT_SECRET}
+      # Claim "iss" que deben traer los tokens.
+      emisor: ${JWT_ISSUER:afiliados-api}
+
+# --- Logs ---
+logging:
+  level:
+    # Hibernate registra en WARN el mensaje original de MySQL, que incluye valores de la fila
+    # (p. ej. "Duplicate entry 'CC-1023456789'"): datos personales sin enmascarar (Ley 1581).
+    # La excepción se sigue propagando y GlobalExceptionHandler la registra enmascarada o con incidente.
+    org.hibernate.orm.jdbc.error: ERROR
+
+# --- Actuator ---
+# Expone solo el health check; el resto de endpoints puede filtrar información interna.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+# --- OpenAPI / Swagger ---
+# Activo por defecto en desarrollo; en producción conviene SWAGGER_ENABLED=false
+# para no publicar el mapa de la API.
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:true}
+    path: /swagger-ui.html
+
+# --- Errores ---
+# No devolver trazas ni mensajes internos al cliente.
+server:
+  error:
+    include-stacktrace: never
+    include-message: never
